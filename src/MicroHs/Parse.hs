@@ -4,6 +4,7 @@
 module MicroHs.Parse(P, pTop, pTopModule, parseDie, parse, pExprTop, keywords, dotDotIdent) where
 import qualified Prelude(); import MHSPrelude hiding ((*>), (<*))
 import Control.Applicative hiding ((*>), (<*))
+import Control.Arrow (second)
 import Control.Monad
 import Control.Monad.Fail
 import Data.Char

@@ -7,7 +7,7 @@ module MHSPrelude(
   module Control.Arrow,
   module Data.Monoid,
   module Data.Semigroup,
-  (<$>), Applicative(..), (*>),
+  (<$>), Applicative(..), (*>), (<*), (>=>), (<=<)
   ) where
 import Hugs.Prelude()
 import Prelude hiding(fail)
@@ -223,3 +223,11 @@ instance (NFData a, NFData b) => NFData (a, b) where
 instance NFData (a -> b)
 instance NFData Version
 instance NFData MD5CheckSum
+
+(<=<) :: forall m a b c . Monad m => (b -> m c) -> (a -> m b) -> (a -> m c)
+f <=< g = \ a -> do
+  b <- g a
+  f b
+
+(>=>) :: forall m a b c . Monad m => (a -> m b) -> (b -> m c) -> (a -> m c)
+(>=>) = flip (<=<)

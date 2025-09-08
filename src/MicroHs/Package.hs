@@ -37,9 +37,6 @@ data Package = Package {
   }
   -- deriving (Show)
 
-instance NFData Package where
-  rnf (Package a b c d e f g) = rnf a `seq` rnf b `seq` rnf c `seq` rnf d `seq` rnf e `seq` rnf f `seq` rnf g
-
 -- Fully evaluate a package
 forcePackage :: Package -> Package
-forcePackage p = force p
+forcePackage = id

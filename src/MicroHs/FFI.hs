@@ -1,6 +1,8 @@
 module MicroHs.FFI(makeFFI) where
 import qualified Prelude(); import MHSPrelude
+import Control.Arrow(first, second)
 import Data.List
+import Data.Maybe(fromJust, isJust)
 import GHC.Stack
 import MicroHs.Desugar(LDef)
 import MicroHs.Exp
@@ -176,7 +178,8 @@ cTypeHsName :: HasCallStack => EType -> String
 cTypeHsName (EApp (EVar ptr) _t) | ptr == identPtr = "Ptr"
                                  | ptr == identFunPtr = "FunPtr"
                                  | ptr == identStablePtr = "Int"
-cTypeHsName (EVar i) | Just c <- lookup (unIdent i) cHsTypes = c
+cTypeHsName (EVar i) | isJust mc = fromJust mc
+  where mc = lookup (unIdent i) cHsTypes
 cTypeHsName t = errorMessage (getSLoc t) $ "Not a valid C type: " ++ showEType t
 
 cHsTypes :: [(String, String)]
@@ -221,7 +224,8 @@ cHsTypes =
 cTypeName :: EType -> String
 cTypeName (EApp (EVar ptr) t) | ptr == identPtr       = cTypeName t ++ "*"
                               | ptr == identStablePtr = "uintptr_t"
-cTypeName (EVar i) | Just c <- lookup (unIdent i) cTypes = c
+cTypeName (EVar i) | isJust mc = fromJust mc
+  where mc = lookup (unIdent i) cTypes
 cTypeName t = errorMessage (getSLoc t) $ "Not a valid C type: " ++ showEType t
 
 cTypes :: [(String, String)]
@@ -261,7 +265,8 @@ cTypes =
 jsTypeNameR :: EType -> String
 jsTypeNameR (EApp (EVar ptr) _) | ptr == identPtr = "PTR"
                                 | ptr == identStablePtr = "INT"
-jsTypeNameR (EVar i) | Just c <- lookup (unIdent i) jsTypesR = c
+jsTypeNameR (EVar i) | isJust mc = fromJust mc
+  where mc = lookup (unIdent i) jsTypesR
 jsTypeNameR t = errorMessage (getSLoc t) $ "Not a valid Javascript return type: " ++ showEType t
 
 jsTypesR :: [(String, String)]
@@ -273,7 +278,8 @@ jsTypesR =
 jsTypeName :: EType -> String
 jsTypeName (EApp (EVar ptr) _) | ptr == identPtr = "Ptr"
                                | ptr == identStablePtr = "Int"
-jsTypeName (EVar i) | Just c <- lookup (unIdent i) jsTypes = c
+jsTypeName (EVar i) | isJust mc = fromJust mc
+  where mc = lookup (unIdent i) jsTypes
 jsTypeName t = errorMessage (getSLoc t) $ "Not a valid Javascript argument type: " ++ showEType t
 
 jsTypes :: [(String, String)]

@@ -8,7 +8,7 @@ module MicroHs.Lex(
 import qualified Prelude(); import MHSPrelude hiding(lex)
 import Data.Char
 import Data.List
-import Data.Maybe (fromJust)
+import Data.Maybe (fromJust, isJust)
 import MicroHs.Ident
 import Text.ParserComb(TokenMachine(..))
 
@@ -94,14 +94,14 @@ lex loc cs@(d:_) | isDigit d =
 lex loc ('.':cs@(d:_)) | isLower_ d =
   TSpec loc '.' : lex (addCol loc 1) cs
 -- Recognize #line 123 "file/name.hs"
-lex loc ('#':xcs) | (SLoc _ _ 1) <- loc, Just cs <- stripPrefix "line " xcs =
+lex (SLoc _ _ 1) ('#':'l':'i':'n':'e':' ':cs) =
   case span (/= '\n') cs of
     (line, rs) ->        -- rs will contain the '\n', so subtract 1 below
       let ws = words line
           file = tail $ init $ ws!!1   -- strip the initial and final '"'
           loc' = SLoc file (readInt (ws!!0) - 1) 1
       in  lex loc' rs
-                  | (SLoc _ 1 1) <- loc, take 1 xcs == "!" =
+lex loc@(SLoc _ 1 1) ('#':xcs@('!':cs)) =
   -- It's a shebang (#!), ignore the rest of the line
   skipLine loc xcs
 lex loc ('!':' ':cs) =  -- ! followed by a space is always an operator
@@ -218,7 +218,7 @@ tIndent ts = TIndent (tokensLoc ts) : ts
 
 lexLitStr :: SLoc -> SLoc -> (String -> Token) -> (String -> Maybe Int) -> (String -> String) -> String -> [Token]
 lexLitStr oloc loc mk end post acs = loop loc [] acs
-  where loop l rs cs | Just k <- end cs   = mk (decodeEscs $ post $ reverse rs) : lex (addCol l k) (drop k cs)
+  where loop l rs cs | isJust (end cs)    = let Just k = end cs in mk (decodeEscs $ post $ reverse rs) : lex (addCol l k) (drop k cs)
         loop l rs ('\\':c:cs) | isSpace c = remGap l rs cs
         loop l rs ('\\':'^':'\\':cs)      = loop (addCol l 3) ('\\':'^':'\\':rs) cs  -- special hack for unescaped \
         loop l rs ('\\':cs)               = loop' (addCol l 1) ('\\':rs) cs
@@ -256,8 +256,10 @@ decodeEsc ('x':cs) = conv 16 0 cs
 decodeEsc ('o':cs) = conv 8 0 cs
 decodeEsc ('^':c:cs) | '@' <= c && c <= '_' = chr (ord c - ord '@') : decodeEscs cs
 decodeEsc cs@(c:_) | isDigit c = conv 10 0 cs
-decodeEsc (c1:c2:c3:cs) | Just c <- lookup [c1,c2,c3] ctlCodes = c : decodeEscs cs
-decodeEsc (c1:c2:cs) | Just c <- lookup [c1,c2] ctlCodes = c : decodeEscs cs
+decodeEsc (c1:c2:c3:cs) | isJust mc = let Just c = mc in c : decodeEscs cs
+  where mc = lookup [c1,c2,c3] ctlCodes
+decodeEsc (c1:c2:cs) | isJust mc = let Just c = mc in c : decodeEscs cs
+  where mc = lookup [c1,c2] ctlCodes
 decodeEsc (c  :cs) = c : decodeEscs cs
 decodeEsc []       = error "Bad \\ escape"
 

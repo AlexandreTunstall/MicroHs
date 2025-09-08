@@ -155,7 +155,6 @@ library
                         MicroHs.Graph 
                         MicroHs.Ident 
                         MicroHs.IdentMap 
-                        MicroHs.Interactive 
                         MicroHs.IntMap 
                         MicroHs.IntSet 
                         MicroHs.Lex 

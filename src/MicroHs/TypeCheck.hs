@@ -17,6 +17,7 @@ module MicroHs.TypeCheck(
   ) where
 import qualified Prelude(); import MHSPrelude
 import Control.Applicative
+import Control.Arrow (first, second)
 import Control.Monad
 import Data.Char
 import Data.Function
@@ -56,9 +57,6 @@ data GlobTables = GlobTables {
   gInstInfo   :: InstTable        -- instances are implicitely global
   }
 
-instance NFData GlobTables where
-  rnf (GlobTables a b c d) = rnf a `seq` rnf b `seq` rnf c `seq` rnf d
-
 emptyGlobTables :: GlobTables
 emptyGlobTables = GlobTables { gSynTable = M.empty, gDataTable = M.empty, gClassTable = M.empty, gInstInfo = M.empty }
 
@@ -81,9 +79,6 @@ data TModule a = TModule {
   }
 --  deriving (Show)
 
-instance NFData a => NFData (TModule a) where
-  rnf (TModule a b c d e f) = rnf a `seq` rnf b `seq` rnf c `seq` rnf d `seq` rnf e `seq` rnf f
-
 setBindings :: TModule b -> a -> TModule a
 setBindings (TModule x y z w v _) a = TModule x y z w v a
 
@@ -97,10 +92,7 @@ typeCheck flags globs impt aimps (EModule mn exps defs) =
 --  trace (unlines $ map (showTModuleExps . snd) aimps) $
   let
     imps = map filterImports aimps
-    tc =
-      case defs of
-        SetTCState tcs : _ -> tcs  -- hack to set the saved TCState
-        _ -> mkTCState mn globs imps
+    tc = mkTCState mn globs imps
   in case tcRun (tcDefs flags impt defs) tc of
        (tds, tcs) ->
          let
@@ -787,7 +779,7 @@ tInst :: HasCallStack => Expr -> EType -> T (Expr, EType)
 tInst ae (EForall _ vks t) = do
   t' <- tInstForall vks t
   tInst ae t'
-tInst ae at | Just (ctx, t) <- getImplies at = do
+tInst ae at | isJust (getImplies at) = let Just (ctx, t) = getImplies at in do
   --tcTrace $ "tInst: addConstraint: " ++ show ae ++ ", " ++ show d ++ " :: " ++ show ctx
 {-
   if eqExpr ae eCannotHappen then
@@ -815,7 +807,7 @@ tInstDelay = inst []
     inst cs (EForall _ vks t) = do
       t' <- tInstForall vks t
       inst cs t'
-    inst cs at | Just (ctx, t) <- getImplies at =
+    inst cs at | isJust (getImplies at) = let Just (ctx, t) = getImplies at in
       inst (ctx:cs) t
     inst cs at = return (reverse cs, at)
 
@@ -1667,7 +1659,7 @@ tInferExpr = tInfer tcExpr
 
 tCheckExpr :: HasCallStack =>
               EType -> Expr -> T Expr
-tCheckExpr t e | Just (ctx, t') <- getImplies t = do
+tCheckExpr t e | isJust (getImplies t) = let Just (ctx, t') = getImplies t in do
 --  tcTrace $ "tCheckExpr: " ++ show (e, ctx, t')
   xt <- expandSyn t
   unless (eqEType t xt) undefined
@@ -1983,8 +1975,8 @@ tcExprAp mt ae args = do
                  EUVar r -> fmap (fromMaybe t) (getUVar r)
                  _ -> return t
 --             tcTrace $ "exExprAp: EVar " ++ showIdent i ++ " :: " ++ showExpr t ++ " = " ++ showExpr t' ++ " mt=" ++ show mt
-             case fn of
-               EVar ii | ii == mkIdent "Data.Function.$", f:as <- args -> tcExprAp mt f as
+             case (fn, args) of
+               (EVar ii, f:as) | ii == mkIdent "Data.Function.$" -> tcExprAp mt f as
                _ -> tcExprApFn mt fn t' args
     EQVar f t ->  -- already resolved
       tcExprApFn mt f t args
@@ -1995,7 +1987,7 @@ tcExprAp mt ae args = do
 tcExprApFn :: HasCallStack =>
               Expected -> Expr -> EType -> [Expr] -> T Expr
 --tcExprApFn mt fn fnt args | trace ("tcExprApFn: " ++ show (fn, fnt, args, mt)) False = undefined
-tcExprApFn mt fn (EForall q (IdKind i k:iks) ft) (arg : args) | Just t <- qarg q arg = do
+tcExprApFn mt fn (EForall q (IdKind i k:iks) ft) (arg : args) | isJust (qarg q arg) = let Just t = qarg q arg in do
   t' <- if t `eqEType` EVar dummyIdent
         then newUVar
         else tcType (Check k) t >>= expandSyn
@@ -2273,7 +2265,7 @@ unTuple :: Expected -> Maybe [EType]
 unTuple (Infer _) = Nothing
 unTuple (Check t) = loop [] t
   where loop ts (EApp f a) = loop (a:ts) f
-        loop ts (EVar i) | Just n <- getTupleConstr i, length ts == n = Just ts
+        loop ts (EVar i) | isJust (getTupleConstr i) && length ts == fromJust (getTupleConstr i) = Just ts
         loop _ _ = Nothing
 
 unList :: Expected -> Maybe EType
@@ -2302,7 +2294,7 @@ tcEqns' :: HasCallStack => Bool -> EType -> [IdKind] -> [Eqn] -> T [Eqn]
 tcEqns' top (EForall QExpl iks t) reqd eqns = withExtTyps iks $ tcEqns' top t reqd eqns
 tcEqns' top (EForall QImpl   _ t) reqd eqns =                   tcEqns' top t reqd eqns
 tcEqns' top (EForall QReqd iks t) reqd eqns =                   tcEqns' top t (reqd ++ iks) eqns
-tcEqns' top t reqd eqns | Just (ctx, t') <- getImplies t = do
+tcEqns' top t reqd eqns | isJust (getImplies t) = let Just (ctx, t') = getImplies t in do
   let loc = getSLoc eqns
   d <- newADictIdent loc
   f <- newIdent loc "fcnD"
@@ -2743,7 +2735,7 @@ skolemise (EForall _ tvs ty) = do -- Rule PRPOLY
   (sks1, ty') <- shallowSkolemise tvs ty
   (sks2, ty'') <- skolemise ty'
   return (sks1 ++ sks2, ty'')
-skolemise t@(EApp _ _) | Just (arg_ty, res_ty) <- getArrow t = do
+skolemise t@(EApp _ _) | isJust (getArrow t) = let Just (arg_ty, res_ty) = getArrow t in do
   (sks, res_ty') <- skolemise res_ty
   return (sks, arg_ty `tArrow` res_ty')
 skolemise (EApp f a) = do
@@ -2812,13 +2804,13 @@ subsCheckRho loc exp1 (EForall _ vs1 t1) (EForall _ vs2 t2) | length vs1 == leng
 subsCheckRho loc exp1 sigma1@EForall{} rho2 = do -- Rule SPEC
   (exp1', rho1) <- tInst exp1 sigma1
   subsCheckRho loc exp1' rho1 rho2
-subsCheckRho loc exp1 arho1 rho2 | Just _ <- getImplies arho1 = do
+subsCheckRho loc exp1 arho1 rho2 | isJust (getImplies arho1) = do
   (exp1', rho1) <- tInst exp1 arho1
   subsCheckRho loc exp1' rho1 rho2
-subsCheckRho loc exp1 rho1 rho2 | Just (a2, r2) <- getArrow rho2 = do -- Rule FUN
+subsCheckRho loc exp1 rho1 rho2 | isJust (getArrow rho2) = let Just (a2, r2) = getArrow rho2 in do -- Rule FUN
   (a1, r1) <- unArrow loc rho1
   subsCheckFun loc exp1 a1 r1 a2 r2
-subsCheckRho loc exp1 rho1 rho2 | Just (a1, r1) <- getArrow rho1 = do -- Rule FUN
+subsCheckRho loc exp1 rho1 rho2 | isJust (getArrow rho1) = let Just (a1, r1) = getArrow rho1 in do -- Rule FUN
   (a2,r2) <- unArrow loc rho2
   subsCheckFun loc exp1 a1 r1 a2 r2
 subsCheckRho loc exp1 tau1 tau2 = do  -- Rule MONO
@@ -3000,10 +2992,12 @@ canonPatSynType at = do
       pure $ mkTyp [] emptyCtx [] emptyCtx ty
 
 splitPatSynType :: EType -> ([IdKind], EConstraint, [IdKind], EConstraint, EType)
-splitPatSynType (EForall _ vks1 t0)
-  | Just  (ctx1, EForall _ vks2 t1) <- getImplies t0
-  , Just  (ctx2, ty) <- getImplies t1
-  = (vks1, ctx1, vks2, ctx2, ty)
+splitPatSynType (EForall _ vks1 t0) | isJust x = fromJust x
+  where
+    x = do
+      (ctx1, EForall _ vks2 t1) <- getImplies t0
+      (ctx2, ty) <- getImplies t1
+      Just (vks1, ctx1, vks2, ctx2, ty)
 splitPatSynType t = impossibleShow t
 
 -----
@@ -3083,7 +3077,7 @@ defaultOneTyVar tv = do
 --  traceM $ "defaultOneTyVar: cvs = " ++ show cvs
   dvs <- getSuperClasses cvs                            -- add superclasses
 --  traceM $ "defaultOneTyVar: dvs = " ++ show dvs
-  let oneCls c | Just ts <- M.lookup c (defaults old) =
+  let oneCls c | isJust (M.lookup c $ defaults old) = let Just ts = M.lookup c (defaults old) in
         take 1 $ filter (\ t -> all (\ cc -> soluble cc t) cvs) ts
                | otherwise = []
       soluble c t = fst $ flip tcRun old $ do
@@ -3189,7 +3183,7 @@ solvers =
 -- Examine each goal, either solve it (possibly producing new goals) or let it remain unsolved.
 solveMany :: [Goal] -> [UGoal] -> [(EType, Soln)] -> [Improve] -> T ([UGoal], [Soln], [Improve])
 solveMany [] uns sol imp = return (uns, map snd sol, imp)
-solveMany ((di, ct) : cnss) uns sol imp | Just (_, (dd, _)) <- find (eqEType ct . fst) sol =
+solveMany ((di, ct) : cnss) uns sol imp | isJust (find (eqEType ct . fst) sol) = let Just (_, (dd, _)) = find (eqEType ct . fst) sol in
   solveMany cnss uns ((ct, (di, EVar dd)) : sol) imp
 -- Need to handle ct of the form C => T, and forall a . T
 solveMany (cns@(di, ct) : cnss) uns sol imp = do
@@ -3492,7 +3486,7 @@ solveEq eqs t1 t2 | normTypeEq eqs t1 `eqEType` normTypeEq eqs t2 = Just []
 -- XXX This guaranteed by how it's called, but I'm not sure it always works properly.
 addTypeEq :: EType -> EType -> TypeEqTable -> TypeEqTable
 addTypeEq t1 t2 aeqs =
-  let deref (EVar i) | Just t <- lookup i aeqs = t
+  let deref (EVar i) | isJust (lookup i aeqs) = fromJust $ lookup i aeqs
       deref (ESign t _) = t
       deref t = t
       t1' = deref t1
@@ -3585,7 +3579,7 @@ standaloneDeriving str narg act = do
 --  traceM ("standaloneDeriving 1 " ++ show (_vks, _ctx, cc))
   (cls, ts, tname) <-
     case getAppM cc of
-      Just (c, ts@(_:_)) | Just (n, _) <- getAppM (last ts) -> return (c, init ts, n)
+      Just (c, ts@(_:_)) | isJust (getAppM $ last ts) -> let Just (n, _) = getAppM (last ts) in return (c, init ts, n)
       _ -> tcError (getSLoc act) "malformed standalone deriving"
 --  traceM ("standaloneDeriving 2 " ++ show (act, cls, tname))
   dtable <- gets dataTable

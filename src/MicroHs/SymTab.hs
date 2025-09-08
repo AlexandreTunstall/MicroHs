@@ -39,9 +39,6 @@ instance Show Entry where
 instance Eq Entry where
   Entry x _ == Entry y _  =  getIdent x == getIdent y
 
-instance NFData Entry where
-  rnf (Entry a b) = rnf a `seq` rnf b
-
 getIdent :: Expr -> Ident
 getIdent ae =
   case ae of
