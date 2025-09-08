@@ -28,12 +28,6 @@ data Exp
   | Lit Lit
   deriving (Eq)
 
-instance NFData Exp where
-  rnf (Var a) = rnf a
-  rnf (App a b) = rnf a `seq` rnf b
-  rnf (Lam a b) = rnf a `seq` rnf b
-  rnf (Lit a) = rnf a
-
 app2 :: Exp -> Exp -> Exp -> Exp
 app2 f a1 a2 = App (App f a1) a2
 

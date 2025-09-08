@@ -8,7 +8,7 @@ module MicroHs.Lex(
 import qualified Prelude(); import MHSPrelude hiding(lex)
 import Data.Char
 import Data.List
-import Data.Maybe (fromJust)
+import Data.Maybe (fromJust, isJust)
 import MicroHs.Ident
 import Text.ParserComb(TokenMachine(..))
 
@@ -101,14 +101,14 @@ lex loc ('(':dcs@(d:cs)) | d == '#'  = TSpec loc 'L' : lex (addCol loc 2) cs
                          | otherwise = TSpec loc '(' : lex (addCol loc 1) dcs
 lex loc ('#':')':cs) = TSpec loc 'R' : lex (addCol loc 2) cs
 -- Recognize #line 123 "file/name.hs"
-lex loc ('#':xcs) | (SLoc _ _ 1) <- loc, Just cs <- stripPrefix "line " xcs =
+lex (SLoc _ _ 1) ('#':'l':'i':'n':'e':' ':cs) =
   case span (/= '\n') cs of
     (line, rs) ->        -- rs will contain the '\n', so subtract 1 below
       let ws = words line
           file = tail $ init $ ws!!1   -- strip the initial and final '"'
           loc' = SLoc file (readInt (ws!!0) - 1) 1
       in  lex loc' rs
-                  | (SLoc _ 1 1) <- loc, take 1 xcs == "!" =
+lex loc@(SLoc _ 1 1) ('#':xcs@('!':cs)) =
   -- It's a shebang (#!), ignore the rest of the line
   skipLine loc xcs
 lex loc ('!':' ':cs) =  -- ! followed by a space is always an operator
@@ -231,7 +231,7 @@ tIndent ts = TIndent (tokensLoc ts) : ts
 
 lexLitStr :: SLoc -> SLoc -> (String -> Token) -> (String -> Maybe Int) -> (String -> String) -> String -> [Token]
 lexLitStr oloc loc mk end post acs = loop loc [] acs
-  where loop l rs cs | Just k <- end cs   = mk (decodeEscs $ post $ reverse rs) : lex (addCol l k) (drop k cs)
+  where loop l rs cs | isJust (end cs)    = let Just k = end cs in mk (decodeEscs $ post $ reverse rs) : lex (addCol l k) (drop k cs)
         loop l rs ('\\':c:cs) | isSpace c = remGap l rs cs
         loop l rs ('\\':'^':'\\':cs)      = loop (addCol l 3) ('\\':'^':'\\':rs) cs  -- special hack for unescaped \
         loop l rs ('\\':cs)               = loop' (addCol l 1) ('\\':rs) cs
@@ -270,8 +270,10 @@ decodeEsc ('x':cs) = conv 16 0 cs
 decodeEsc ('o':cs) = conv 8 0 cs
 decodeEsc ('^':c:cs) | '@' <= c && c <= '_' = chr (ord c - ord '@') : decodeEscs cs
 decodeEsc cs@(c:_) | isDigit c = conv 10 0 cs
-decodeEsc (c1:c2:c3:cs) | Just c <- lookup [c1,c2,c3] ctlCodes = c : decodeEscs cs
-decodeEsc (c1:c2:cs) | Just c <- lookup [c1,c2] ctlCodes = c : decodeEscs cs
+decodeEsc (c1:c2:c3:cs) | isJust mc = let Just c = mc in c : decodeEscs cs
+  where mc = lookup [c1,c2,c3] ctlCodes
+decodeEsc (c1:c2:cs) | isJust mc = let Just c = mc in c : decodeEscs cs
+  where mc = lookup [c1,c2] ctlCodes
 decodeEsc (c  :cs) = c : decodeEscs cs
 decodeEsc []       = mhsError "Bad \\ escape"
 
@@ -417,7 +419,7 @@ pragma loc cs =
   in  case words cs of
         p : _ | map toUpper p == "SOURCE" -> TPragma loc p : skip
         -- hsc2hs generates LINE pragmas
-        p : ln@(_:_) : fn : _ | map toUpper p == "LINE", all isDigit ln ->
+        p : ln@(_:_) : fn : _ | map toUpper p == "LINE" && all isDigit ln ->
           let f = tail (init fn)
               l = readInt ln - 1
           in  seq l $ skipNest (SLoc f l 1) 1 ('#':cs)

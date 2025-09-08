@@ -29,10 +29,6 @@ data CacheEntry =
     (TModule [LDef])                    -- the cached module
 --  deriving (Show)
 
-instance NFData CacheEntry where
-  rnf (CompMdl a b c) = rnf a `seq` rnf b `seq` rnf c
-  rnf (PkgMdl a) = rnf a
-
 tModuleOf :: CacheEntry -> TModule [LDef]
 tModuleOf (CompMdl t _ _) = t
 tModuleOf (PkgMdl t) = t
@@ -50,11 +46,8 @@ data Cache = Cache {
   }
 --  deriving (Show)
 
-instance NFData Cache where
-  rnf (Cache a b c d e) = rnf a `seq` rnf b `seq` rnf c `seq` rnf d `seq` rnf e
-
 forceCache :: Cache -> Cache
-forceCache c = force c
+forceCache = id
 
 getCacheTables :: Cache -> GlobTables
 getCacheTables = tables

@@ -67,18 +67,12 @@ data TypeExport = TypeExport
 
 --instance Show TypeExport where show (TypeExport i _ vs) = showIdent i ++ show vs
 
-instance NFData TypeExport where
-  rnf (TypeExport a b c) = rnf a `seq` rnf b `seq` rnf c
-
 data ValueExport = ValueExport
   Ident           -- unqualified name
   Entry           -- symbol table entry
 --  deriving (Show)
 
 --instance Show ValueExport where show (ValueExport i _) = showIdent i
-
-instance NFData ValueExport where
-  rnf (ValueExport a b) = rnf a `seq` rnf b
 
 -----------------------------------------------
 -- Tables
@@ -113,9 +107,6 @@ data InstInfo = InstInfo
        [IFunDep]
 --  deriving (Show)
 
-instance NFData InstInfo where
-  rnf (InstInfo a b c) = rnf a `seq` rnf b `seq` rnf c
-
 -- This is the dictionary expression, instance variables, instance context,
 -- and instance.
 type InstDictC  = (Expr, [IdKind], [EConstraint], EConstraint, [IFunDep])
@@ -134,9 +125,6 @@ data ClassInfo = ClassInfo
   [(Ident,EType)]  -- methods with their types
   [IFunDep]        -- fundeps
 type IFunDep = ([Bool], [Bool])           -- invariant: the length of the lists is the number of class tyvars
-
-instance NFData ClassInfo where
-  rnf (ClassInfo a b c d e) = rnf a `seq` rnf b `seq` rnf c `seq` rnf d `seq` rnf e
 
 -----------------------------------------------
 -- TCState

@@ -115,7 +115,7 @@ instance TokenMachine tm t => Alternative (Prsr tm t) where
       r -> r
 
 instance TokenMachine tm t => MonadPlus (Prsr tm t) where
-  mzero = fail "mzero"
+  mzero = F.fail "mzero"
   mplus = (<|>)
 
 satisfy :: forall tm t . TokenMachine tm t => String -> (t -> Bool) -> Prsr tm t t
@@ -127,7 +127,9 @@ satisfy msg f = P $ \ acs ->
 satisfyM :: forall tm t a . TokenMachine tm t => String -> (t -> Maybe a) -> Prsr tm t a
 satisfyM msg f = P $ \ acs ->
   case tmNextToken acs of
-    (c, cs) | Just a <- f c -> Success a cs noFail
+    (c, cs) -> case f c of
+        Just a -> Success a cs noFail
+        _ -> Failure (LastFail (tmLeft acs) (firstToken acs) [msg])
     _ -> Failure (LastFail (tmLeft acs) (firstToken acs) [msg])
 
 infixl 9 <?>

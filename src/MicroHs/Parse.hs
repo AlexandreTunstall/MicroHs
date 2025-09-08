@@ -4,6 +4,7 @@
 module MicroHs.Parse(P, pTop, pTopModule, parseDie, parse, pExprTop, keywords, dotDotIdent) where
 import qualified Prelude(); import MHSPrelude hiding ((*>), (<*))
 import Control.Applicative hiding ((*>), (<*))
+import Control.Arrow (second)
 import Control.Monad
 import Control.Monad.Fail
 import Data.Char
@@ -786,7 +787,7 @@ pDo = do
             x = EVar $ mkIdentSLoc l "$mdo"
             pur = EVar (mkIdentSLoc l "B@.return")
         in  pure $ EDo q [SRec (init ss ++ [SBind x e]), SThen (EApp pur x)]
-      _ -> fail "mdo"
+      _ -> Control.Monad.Fail.fail "mdo"
    else
     pure (EDo q ss)
 

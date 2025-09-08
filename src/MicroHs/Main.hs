@@ -23,7 +23,6 @@ import MicroHs.List
 import MicroHs.Package
 import MicroHs.Translate
 import MicroHs.TypeCheck(TModule(..), showValueExport, showTypeExport, showTypeExportAssocs, TypeExport)
-import MicroHs.Interactive
 import MicroHs.MakeCArray
 import MhsEval
 import System.Cmd
@@ -66,7 +65,7 @@ main = do
               if installPkg flags' then mainInstallPackage flags' mdls else
               withArgs rargs $ do
                 case mdls of
-                  []  | null (cArgs flags') -> mainInteractive flags'
+                  []  | null (cArgs flags') -> error "interactive mode not supported"
                       | otherwise -> mainCompileC flags' [] ""
                   [s] -> mainCompile flags' (mkIdentSLoc (SLoc "command-line" 0 0) s)
                   _   -> mhsError usage
@@ -138,12 +137,12 @@ decodeArgs f mdls (arg:args) =
     "-z"        -> decodeArgs f{compress = True} mdls args
     "-b64"      -> decodeArgs f{base64 = True} mdls args
     "-Q"        -> decodeArgs f{installPkg = True} mdls args
-    "-o" | s : args' <- args
-                -> decodeArgs f{output = s} mdls args'
-    "-optc" | s : args' <- args
-                -> decodeArgs f{cArgs = cArgs f ++ [s]} mdls args'
-    "-optl" | s : args' <- args
-                -> decodeArgs f{lArgs = lArgs f ++ [s]} mdls args'
+    "-o" | not (null args)
+                -> let s : args' = args in decodeArgs f{output = s} mdls args'
+    "-optc" | not (null args)
+                -> let s : args' = args in decodeArgs f{cArgs = cArgs f ++ [s]} mdls args'
+    "-optl" | not (null args)
+                -> let s : args' = args in decodeArgs f{lArgs = lArgs f ++ [s]} mdls args'
     '-':'i':[]  -> decodeArgs f{paths = []} mdls args
     '-':'i':s   -> decodeArgs f{paths = paths f ++ [s]} mdls args
     '-':'o':s   -> decodeArgs f{output = s} mdls args
@@ -155,7 +154,7 @@ decodeArgs f mdls (arg:args) =
     '-':'a':s   -> decodeArgs f{pkgPath = pkgPath f ++ [s]} mdls args
     '-':'L':s   -> decodeArgs f{listPkg = Just s} mdls args
     '-':'p':s   -> decodeArgs f{preload = preload f ++ [s]} mdls args
-    '-':'d':'d':'u':'m':'p':'-':r | Just d <- lookup r dumpFlagTable ->
+    '-':'d':'d':'u':'m':'p':'-':r | isJust (lookup r dumpFlagTable) -> let Just d = lookup r dumpFlagTable in
                    decodeArgs f{dumpFlags = d : dumpFlags f} mdls args
     "--stdin"   -> decodeArgs f{useStdin = True} mdls args
     '-':_       -> mhsError $ "Unknown flag: " ++ arg ++ "\n" ++ usage
